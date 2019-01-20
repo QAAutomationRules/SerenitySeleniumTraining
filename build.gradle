@@ -1,0 +1,44 @@
+repositories {
+    jcenter()
+    mavenLocal()
+}
+
+buildscript {
+    repositories {
+        mavenLocal()
+        jcenter()
+    }
+    dependencies {
+        classpath("net.serenity-bdd:serenity-gradle-plugin:1.9.19")
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'net.serenity-bdd.aggregator'
+
+group 'SerenityTraining'
+version '1.0-SNAPSHOT'
+
+sourceCompatibility = 1.8
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile "org.assertj:assertj-core:3.11.1"
+    compile "net.serenity-bdd:serenity-core:2.0.33"
+    compile "net.serenity-bdd:serenity-cucumber:1.9.23"
+    compile "net.serenity-bdd:serenity-rest-assured:2.0.33"
+    // https://mvnrepository.com/artifact/faker/faker
+    compile group: 'com.github.javafaker', name: 'javafaker', version: '0.14'
+    //Rest-Assured
+    compile 'io.rest-assured:rest-assured:3.1.0' //This is what we really need
+    compile 'io.rest-assured:json-path:3.1.0'
+    compile 'io.rest-assured:xml-path:3.1.0'
+    compile 'io.rest-assured:json-schema-validator:3.1.0'
+    //
+    compile 'org.hamcrest:hamcrest-all:1.3' //This is very useful
+    compile 'org.slf4j:slf4j-simple:1.7.7'
+}

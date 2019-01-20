@@ -1,0 +1,118 @@
+variables:
+  GRADLE_OPTS: "-Dorg.gradle.daemon=false"
+  ENVIRONMENT: devtitan
+  SERVICE_BRANCHES: ""
+
+stages:
+- build
+- deploy
+
+.build_template: &build_template
+  stage: build
+  image: openjdk:10-jdk-slim
+  variables:
+    DOCKER_DRIVER: overlay2
+    SELENIUM_REMOTE_URL: "http://localhost:4444/wd/hub/"
+  script:
+  - ./gradlew --build-cache build -Dwebdriver.remote.url=${SELENIUM_REMOTE_URL} -Denvironment=${ENVIRONMENT} -Dservice.branches=${SERVICE_BRANCHES} -Dtags=${TAGS}
+  after_script:
+  - ./gradlew aggregate
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: push
+    paths:
+    - build
+    - .gradle
+  artifacts:
+    expire_in: 1 week
+    when: always
+    paths:
+    - build/reports/
+    - target/
+
+build_with_chrome:
+  <<: *build_template
+  services:
+    - docker:dind
+    - selenium/standalone-chrome:latest
+
+build_with_firefox:
+  <<: *build_template
+  services:
+    - docker:dind
+    - selenium/standalone-firefox:latest
+
+codequality:
+  stage: build
+  image: docker:latest
+  variables:
+    DOCKER_DRIVER: overlay2
+  allow_failure: true
+  services:
+  - docker:dind
+  script:
+  - setup_docker
+  - codeclimate_html
+  artifacts:
+    expire_in: 1 week
+    paths: [codeclimate.html]
+
+.functional tests:
+  stage: test
+  image: openjdk:10-jdk-slim
+  script:
+  - ./gradlew --build-cache integrationTests --continue --info -Denvironment=${ENVIRONMENT} -Dservice.branches=${SERVICE_BRANCHES} -Dtags=${TAGS}
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    paths:
+    - build
+    - .gradle
+  artifacts:
+    expire_in: 1 week
+    when: always
+    paths:
+    - build/reports/tests/junit
+    - build/test-results/junit
+    - target/
+
+deploy:
+  stage: deploy
+  image: openjdk:10-jdk-slim
+  script:
+  - echo "nexusUsername = ${NEXUS_USERNAME}" > ${GRADLE_USER_HOME}/gradle.properties
+  - echo "nexusPassword = ${NEXUS_PASSWORD}" >> ${GRADLE_USER_HOME}/gradle.properties
+  - ./gradlew --build-cache uploadArchive
+  - rm ${GRADLE_USER_HOME}/gradle.properties
+  only:
+  - master
+  cache:
+    key: "$CI_COMMIT_REF_NAME"
+    policy: pull
+    paths:
+    - build
+    - .gradle
+
+.vertafore_scripts: &vertafore_scripts |
+  # Vertafore functions
+  [[ "$TRACE" ]] && set -x
+  function codeclimate_html() {
+    cc_opts="--env CODECLIMATE_CODE="$PWD" \
+             --volume "$PWD":/code \
+             --volume /var/run/docker.sock:/var/run/docker.sock \
+             --volume /tmp/cc:/tmp/cc"
+
+    docker run ${cc_opts} codeclimate/codeclimate:0.69.0 init
+    docker run ${cc_opts} codeclimate/codeclimate:0.69.0 analyze -f html > codeclimate.html
+  }
+
+  function setup_docker() {
+    if ! docker info &>/dev/null; then
+      if [ -z "$DOCKER_HOST" -a "$KUBERNETES_PORT" ]; then
+        export DOCKER_HOST='tcp://localhost:2375'
+      fi
+    fi
+  }
+
+before_script:
+- export GRADLE_USER_HOME=`pwd`/.gradle
+- *vertafore_scripts
